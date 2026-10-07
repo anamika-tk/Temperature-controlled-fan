@@ -18,22 +18,21 @@ BlynkTimer timer;
 float threshold = 33;
 bool manual = false;
 
-// READ SENSOR + AUTOMATIC FAN
 void updateSystem() {
-
   float temp = dht.readTemperature();
-  float hum  = dht.readHumidity();
+  float hum = dht.readHumidity();
 
   if (isnan(temp) || isnan(hum))
     return;
 
-  // Send to Blynk dashboard
   Blynk.virtualWrite(V1, temp);
   Blynk.virtualWrite(V2, hum);
 
-  // Automatic mode
   if (!manual) {
-    digitalWrite(RELAY, temp >= threshold ? LOW : HIGH);
+    if (temp >= threshold)
+      digitalWrite(RELAY, LOW);
+    else
+      digitalWrite(RELAY, HIGH);
   }
 
   Serial.print("Temp: ");
@@ -44,44 +43,32 @@ void updateSystem() {
   Serial.println(threshold);
 }
 
-// MANUAL FAN SWITCH - V0
 BLYNK_WRITE(V0) {
-
   manual = param.asInt();
 
   if (manual)
-    digitalWrite(RELAY, LOW);     // Fan ON
+    digitalWrite(RELAY, LOW);
   else
-    digitalWrite(RELAY, HIGH);    // Return to auto
-
+    digitalWrite(RELAY, HIGH);
 }
 
-// THRESHOLD SLIDER - V3
 BLYNK_WRITE(V3) {
-
   threshold = param.asFloat();
-
 }
 
 void setup() {
-
   Serial.begin(115200);
 
   pinMode(RELAY, OUTPUT);
-  digitalWrite(RELAY, HIGH);      // Fan OFF initially
+  digitalWrite(RELAY, HIGH);
 
   dht.begin();
-
   Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
-
   Blynk.syncVirtual(V0, V3);
-
   timer.setInterval(2000L, updateSystem);
 }
 
 void loop() {
-
   Blynk.run();
   timer.run();
-
 }
