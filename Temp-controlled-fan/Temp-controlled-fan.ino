@@ -10,104 +10,78 @@ char ssid[] = "cromastone";
 char pass[] = "k12345678";
 
 #define DHTPIN 4
-#define DHTTYPE DHT11
-#define RELAY_PIN 5
+#define RELAY 5
 
-DHT dht(DHTPIN, DHTTYPE);
+DHT dht(DHTPIN, DHT11);
 BlynkTimer timer;
 
-float threshold = 33.0;
-int manualOverride = 0; // Tracks if manual switch is toggled
+float threshold = 33;
+bool manual = false;
 
-void readSensor()
-{
-  float temperature = dht.readTemperature();
-  float humidity = dht.readHumidity();
+// READ SENSOR + AUTOMATIC FAN
+void updateSystem() {
 
-  if (isnan(temperature) || isnan(humidity))
-  {
-    Serial.println("Failed to read DHT11!");
+  float temp = dht.readTemperature();
+  float hum  = dht.readHumidity();
+
+  if (isnan(temp) || isnan(hum))
     return;
+
+  // Send to Blynk dashboard
+  Blynk.virtualWrite(V1, temp);
+  Blynk.virtualWrite(V2, hum);
+
+  // Automatic mode
+  if (!manual) {
+    digitalWrite(RELAY, temp >= threshold ? LOW : HIGH);
   }
 
-  Serial.print("Temperature: ");
-  Serial.print(temperature);
-  Serial.print(" °C | Humidity: ");
-  Serial.print(humidity);
-  Serial.println(" %");
-
-  // Send sensor data to CORRECT Blynk Datastreams matching your web setup
-  Blynk.virtualWrite(V1, temperature); // V1 is Temperature
-  Blynk.virtualWrite(V2, humidity);    // V2 is Humidity
-
-  // If manual override is NOT active, use automated temperature logic
-  if (manualOverride == 0)
-  {
-    if (temperature >= threshold)
-    {
-      digitalWrite(RELAY_PIN, LOW);   // Turn ON Fan (Active-Low)
-      Serial.println("Fan ON (Auto)");
-    }
-    else
-    {
-      digitalWrite(RELAY_PIN, HIGH);  // Turn OFF Fan
-      Serial.println("Fan OFF (Auto)");
-    }
-  }
-
-  Serial.println("----------------------");
+  Serial.print("Temp: ");
+  Serial.print(temp);
+  Serial.print(" C | Humidity: ");
+  Serial.print(hum);
+  Serial.print(" % | Threshold: ");
+  Serial.println(threshold);
 }
 
-// Handles Manual Switch Override from Blynk app (Virtual Pin V0)
-BLYNK_WRITE(V0)
-{
-  manualOverride = param.asInt();
+// MANUAL FAN SWITCH - V0
+BLYNK_WRITE(V0) {
 
-  if (manualOverride == 1)
-  {
-    digitalWrite(RELAY_PIN, LOW); // Force Fan ON
-    Serial.println("Manual Override: Fan ON");
-  }
+  manual = param.asInt();
+
+  if (manual)
+    digitalWrite(RELAY, LOW);     // Fan ON
   else
-  {
-    digitalWrite(RELAY_PIN, HIGH); // Force Fan OFF / Return to Auto
-    Serial.println("Manual Override: Fan OFF");
-  }
+    digitalWrite(RELAY, HIGH);    // Return to auto
+
 }
 
-// Handles incoming slider value from Blynk app (Virtual Pin V3)
-BLYNK_WRITE(V3)
-{
+// THRESHOLD SLIDER - V3
+BLYNK_WRITE(V3) {
+
   threshold = param.asFloat();
-  Serial.print("Temperature threshold updated: ");
-  Serial.print(threshold);
-  Serial.println(" °C");
+
 }
 
-void setup()
-{
+void setup() {
+
   Serial.begin(115200);
 
-  pinMode(RELAY_PIN, OUTPUT);
-  digitalWrite(RELAY_PIN, HIGH); // Fan OFF initially
+  pinMode(RELAY, OUTPUT);
+  digitalWrite(RELAY, HIGH);      // Fan OFF initially
 
   dht.begin();
 
-  // Connect to Wi-Fi and Blynk Cloud
   Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
 
-  // Sync state variables from server on startup
-  Blynk.syncVirtual(V0);
-  Blynk.syncVirtual(V3);
+  Blynk.syncVirtual(V0, V3);
 
-  // Setup sensor reading interval (every 2 seconds)
-  timer.setInterval(2000L, readSensor);
-
-  Serial.println("Temperature Controlled Fan Started");
+  timer.setInterval(2000L, updateSystem);
 }
 
-void loop()
-{
+void loop() {
+
   Blynk.run();
   timer.run();
+
 }
